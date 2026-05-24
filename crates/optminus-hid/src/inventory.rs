@@ -1,6 +1,6 @@
 //! Enumerate connected HID++ receivers and their paired devices.
 
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use async_hid::HidBackend;
 use futures_lite::StreamExt;
@@ -35,9 +35,14 @@ const HIDPP_USAGE_PAGE: u16 = 0xff00;
 const HIDPP_LONG_USAGE_ID: u16 = 0x0002;
 
 /// How long to wait for device-arrival event bursts before assuming the
-/// receiver has finished reporting. 500 ms is comfortably above what a Bolt
-/// receiver takes for 6 slots on the hardware I have access to.
-const ARRIVAL_DRAIN: Duration = Duration::from_millis(500);
+/// receiver has finished reporting. MX Master 4 (and other devices that may
+/// be asleep) need a generous window to wake and respond to the arrival
+/// ping; we err on the side of waiting.
+const ARRIVAL_DRAIN: Duration = Duration::from_millis(1500);
+
+/// Maximum number of pairing slots a Bolt receiver supports. We iterate this
+/// range to surface paired-but-offline devices that won't fire arrival events.
+const MAX_BOLT_SLOTS: u8 = 6;
 
 #[derive(Debug, Error)]
 pub enum InventoryError {
@@ -48,9 +53,17 @@ pub enum InventoryError {
 /// Enumerate all Logitech HID++ receivers visible to the current process and
 /// the devices paired to each.
 ///
-/// Devices that are paired but currently offline are not listed: hidpp 0.2 has
-/// no public accessor for the wireless PID of an offline pairing, and there is
-/// nothing else useful to report about a sleeping device.
+/// Combines two data sources per receiver:
+///
+/// - `trigger_device_arrival` events — the only path to a device's wireless
+///   PID in hidpp 0.2 (the `wpid` field on `BoltDevicePairingInformation` is
+///   private). Only online, responsive devices show up here.
+/// - `get_device_pairing_information` polled per slot — covers paired-but-
+///   offline devices (sleeping mice, devices on a different host) that the
+///   arrival ping doesn't wake. No wpid for these.
+///
+/// We merge the two so an MX Master that's been asleep still shows up with
+/// its codename and kind even before you click it.
 pub async fn enumerate() -> Result<Vec<DeviceInventory>, InventoryError> {
     let backend = HidBackend::default();
     let candidates: Vec<async_hid::Device> = backend
@@ -103,26 +116,65 @@ async fn probe_one(dev: async_hid::Device) -> Result<Option<DeviceInventory>, In
     };
 
     let unique_id = bolt.get_unique_id().await.ok();
-    let connections = drain_device_arrival(&bolt).await;
+    let pairing_count = bolt.count_pairings().await.ok();
+    debug!(?pairing_count, "receiver reports pairing count");
 
-    let mut paired = Vec::with_capacity(connections.len());
-    for conn in connections {
-        let codename = bolt.get_device_codename(U4::from_lo(conn.index)).await.ok();
-        let battery = if conn.online {
-            probe_battery(&channel, conn.index).await
+    let connections = drain_device_arrival(&bolt).await;
+    debug!(events = connections.len(), "drained device-arrival events");
+    let by_slot: HashMap<u8, BoltDeviceConnection> =
+        connections.into_iter().map(|c| (c.index, c)).collect();
+
+    let mut paired = Vec::new();
+    for slot in 1u8..=MAX_BOLT_SLOTS {
+        let pairing = match bolt.get_device_pairing_information(U4::from_lo(slot)).await {
+            Ok(p) => p,
+            Err(e) => {
+                debug!(slot, error = ?e, "slot empty or unreadable");
+                continue;
+            }
+        };
+
+        let codename = read_codename(&channel, slot).await;
+        let event = by_slot.get(&slot);
+        // Prefer event data when present — it's a live response. Fall back to
+        // the pairing register for sleeping devices that didn't reply.
+        let online = event.map_or(pairing.online, |c| c.online);
+        let kind = event.map_or(pairing.kind, |c| c.kind);
+        let wpid = event.map(|c| c.wpid);
+        debug!(
+            slot,
+            online,
+            ?wpid,
+            ?kind,
+            has_event = event.is_some(),
+            codename = ?codename,
+            "paired slot"
+        );
+
+        let battery = if online {
+            probe_battery(&channel, slot).await
         } else {
             None
         };
         paired.push(PairedDevice {
-            slot: conn.index,
+            slot,
             codename,
-            wpid: Some(conn.wpid),
-            kind: map_kind(conn.kind),
-            online: conn.online,
+            wpid,
+            kind: map_kind(kind),
+            online,
             battery,
         });
     }
-    paired.sort_by_key(|p| p.slot);
+
+    if let Some(count) = pairing_count
+        && paired.len() != usize::from(count)
+    {
+        warn!(
+            expected = count,
+            found = paired.len(),
+            "paired-device count mismatch — some slots may be unreadable"
+        );
+    }
 
     Ok(Some(DeviceInventory {
         receiver: ReceiverInfo {
@@ -151,6 +203,26 @@ async fn drain_device_arrival(bolt: &BoltReceiver) -> Vec<BoltDeviceConnection> 
         }
     }
     out
+}
+
+/// Reads a paired device's codename, working around a slicing bug in
+/// `hidpp 0.2`'s `BoltReceiver::get_device_codename` that truncates names
+/// longer than 8 characters (it treats `response[2]` as an end-index when it
+/// is actually the byte length — see Solaar's `device_codename` for the
+/// correct slice). 16-byte long-register response is `[sub, chunk, len,
+/// data..13]`; we cap at 13 to stay in-bounds. Long names (>13 chars) would
+/// need multi-chunk reads with chunk param > 0x01; not needed for v0.0.x.
+async fn read_codename(channel: &HidppChannel, slot: u8) -> Option<String> {
+    // 0xFF = receiver device index, 0xB5 = ReceiverInfo register,
+    // 0x60+slot = DeviceCodename sub-register, 0x01 = first chunk.
+    let response = channel
+        .read_long_register(0xFF, 0xB5, [0x60 + slot, 0x01, 0x00])
+        .await
+        .ok()?;
+    let len = usize::from(response[2]).min(13);
+    core::str::from_utf8(&response[3..3 + len])
+        .ok()
+        .map(str::to_string)
 }
 
 async fn probe_battery(channel: &Arc<HidppChannel>, slot: u8) -> Option<BatteryInfo> {
