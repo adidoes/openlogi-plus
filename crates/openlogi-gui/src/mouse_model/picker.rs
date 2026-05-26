@@ -69,7 +69,7 @@ pub fn action_picker<T: 'static>(
 
         for action in actions {
             let is_selected = current.as_ref() == Some(&action);
-            let label = action.label().to_string();
+            let label = action.label();
             let observer = observer.clone();
             let popover = popover.clone();
             let action = Rc::new(action);

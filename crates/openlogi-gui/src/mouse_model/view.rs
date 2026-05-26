@@ -20,7 +20,7 @@ use gpui_component::{Selectable, popover::Popover, v_flex};
 
 use openlogi_assets::Metadata;
 
-use crate::data::mouse_buttons::{ButtonId, Hotspot, MOUSE_MODEL_SIZE, default_hotspots};
+use crate::data::mouse_buttons::{Action, ButtonId, Hotspot, MOUSE_MODEL_SIZE, default_hotspots};
 use crate::mouse_model::leader_lines::{
     Geometry as LeaderGeometry, Label, Side, paint as paint_leader_lines,
 };
@@ -142,7 +142,7 @@ impl Render for MouseModelView {
             .children(labels_outer.iter().map(|label| {
                 let binding = bindings
                     .get(&label.id)
-                    .map_or("Unbound".to_string(), |a| a.label().to_string());
+                    .map_or_else(|| "Unbound".to_string(), Action::label);
                 label_card(
                     label,
                     binding,

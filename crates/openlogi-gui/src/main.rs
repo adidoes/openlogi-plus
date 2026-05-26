@@ -9,6 +9,7 @@ mod asset;
 mod components;
 mod data;
 mod hardware;
+mod launch_agent;
 mod mouse_model;
 mod single_instance;
 mod state;
@@ -54,6 +55,13 @@ fn main() -> Result<()> {
         }
         Err(e) => return Err(anyhow::Error::from(e).context("single-instance check")),
     };
+
+    // P2.2: keep the LaunchAgent in sync with the user's autostart preference.
+    // Cheap (one fs read + maybe write), failures are logged inside.
+    let early_config = Config::load_or_default().ok();
+    if let Some(cfg) = early_config.as_ref() {
+        launch_agent::reconcile(cfg.app_settings.launch_at_login);
+    }
 
     let inventories = enumerate_blocking().context("HID enumeration failed")?;
 

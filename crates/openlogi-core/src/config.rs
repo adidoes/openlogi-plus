@@ -28,6 +28,9 @@ pub const SCHEMA_VERSION: u32 = 1;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub schema_version: u32,
+    /// Non-device-scoped preferences (autostart, tray, language, …).
+    #[serde(default, skip_serializing_if = "AppSettings::is_default")]
+    pub app_settings: AppSettings,
     /// HID++ `config_key` of the carousel-selected device, persisted so a
     /// restart restores the last view rather than always landing on the
     /// first paired device. `None` means "fall back to the first device".
@@ -41,9 +44,34 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
+            app_settings: AppSettings::default(),
             selected_device: None,
             devices: BTreeMap::new(),
         }
+    }
+}
+
+/// App-wide preferences not tied to any particular device.
+///
+/// All fields are `#[serde(default)]` so adding a new one is backward
+/// compatible — old config files just keep the default for the new field.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppSettings {
+    /// When true, a macOS `LaunchAgent` plist at
+    /// `~/Library/LaunchAgents/dev.openlogi.openlogi.plist` is installed
+    /// so the app starts on login (P2.2). The plist is reconciled with
+    /// this field on every startup; flipping the flag and relaunching is
+    /// enough to install / remove it.
+    #[serde(default)]
+    pub launch_at_login: bool,
+}
+
+impl AppSettings {
+    /// `skip_serializing_if` helper: true when nothing diverges from the
+    /// default, so empty settings don't clutter `config.toml`.
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
     }
 }
 
@@ -338,6 +366,24 @@ mod tests {
         cfg.set_selected_device(Some("2b042".into()));
         let parsed = write_and_read(&cfg);
         assert_eq!(parsed.selected_device(), Some("2b042"));
+    }
+
+    #[test]
+    fn app_settings_default_omits_block() {
+        let cfg = Config::default();
+        let body = toml::to_string_pretty(&cfg).expect("serialize");
+        assert!(
+            !body.contains("app_settings"),
+            "default app_settings should be omitted: {body}"
+        );
+    }
+
+    #[test]
+    fn app_settings_launch_at_login_roundtrips() {
+        let mut cfg = Config::default();
+        cfg.app_settings.launch_at_login = true;
+        let parsed = write_and_read(&cfg);
+        assert!(parsed.app_settings.launch_at_login);
     }
 
     #[test]

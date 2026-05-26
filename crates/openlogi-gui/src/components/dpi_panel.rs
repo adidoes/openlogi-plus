@@ -110,16 +110,16 @@ impl DpiPanel {
 
 impl Render for DpiPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (dpi, presets) = cx
-            .try_global::<AppState>()
-            .map(|s| (s.dpi, s.dpi_presets()))
-            .unwrap_or((crate::state::DEFAULT_DPI, Vec::new()));
+        let (dpi, presets) = cx.try_global::<AppState>().map_or_else(
+            || (crate::state::DEFAULT_DPI, Vec::new()),
+            |s| (s.dpi, s.dpi_presets()),
+        );
         let theme = cx.theme();
 
         let preset_chips: Vec<AnyElement> = presets
             .iter()
             .enumerate()
-            .map(|(idx, value)| preset_chip(idx, *value, *value == dpi, presets.clone()))
+            .map(|(idx, value)| preset_chip(idx, *value, *value == dpi, &presets))
             .collect();
 
         v_flex()
@@ -162,8 +162,8 @@ const CHIP_H: f32 = 28.;
 
 /// One DPI preset rendered as a chip. Clicking the chip writes that DPI to
 /// the device and updates `AppState.dpi`; the small × removes the preset.
-fn preset_chip(idx: usize, value: u32, active: bool, presets: Vec<u32>) -> AnyElement {
-    let presets_for_remove = presets.clone();
+fn preset_chip(idx: usize, value: u32, active: bool, presets: &[u32]) -> AnyElement {
+    let presets_for_remove: Vec<u32> = presets.to_vec();
     h_flex()
         .id(("dpi-preset-chip", idx))
         .h(px(CHIP_H))
