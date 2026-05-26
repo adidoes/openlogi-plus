@@ -1980,6 +1980,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs4"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e72ed92b67c146290f88e9c89d60ca163ea417a446f61ffd7b72df3e7f1dfd5"
+dependencies = [
+ "rustix 1.1.4",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "fsevent-sys"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4277,6 +4287,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "directories",
+ "fs4",
  "gpui",
  "gpui-component",
  "gpui_platform",
@@ -4284,6 +4295,7 @@ dependencies = [
  "openlogi-core",
  "openlogi-hid",
  "openlogi-hook",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "tracing-subscriber",

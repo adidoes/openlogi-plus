@@ -10,6 +10,7 @@ mod components;
 mod data;
 mod hardware;
 mod mouse_model;
+mod single_instance;
 mod state;
 mod theme;
 
@@ -38,6 +39,21 @@ use crate::state::{AppState, DpiCycleState};
 
 fn main() -> Result<()> {
     init_tracing();
+
+    // P2.3: refuse a second copy. If the lock is held we exit non-error so
+    // the user's launcher (Dock click, Spotlight, `open -a OpenLogi`) doesn't
+    // surface a scary crash dialog.
+    let _guard = match single_instance::acquire() {
+        Ok(g) => g,
+        Err(single_instance::InstanceError::AlreadyRunning { path }) => {
+            info!(
+                path = %path.display(),
+                "another OpenLogi instance is already running — exiting"
+            );
+            return Ok(());
+        }
+        Err(e) => return Err(anyhow::Error::from(e).context("single-instance check")),
+    };
 
     let inventories = enumerate_blocking().context("HID enumeration failed")?;
 
@@ -144,12 +160,13 @@ fn load_config_and_bindings(
             inv.paired.iter().find_map(|p| {
                 let model = p.model_info.as_ref()?;
                 let key = model.config_key();
-                let target = receiver_uid.as_ref().map(|uid| {
-                    crate::components::dpi_panel::DpiTarget {
-                        receiver_uid: uid.clone(),
-                        slot: p.slot,
-                    }
-                });
+                let target =
+                    receiver_uid
+                        .as_ref()
+                        .map(|uid| crate::components::dpi_panel::DpiTarget {
+                            receiver_uid: uid.clone(),
+                            slot: p.slot,
+                        });
                 Some((Some(key), target))
             })
         })
@@ -272,10 +289,7 @@ fn dispatch_action(action: &Action, dpi_cycle: &Arc<RwLock<DpiCycleState>>) {
     if let Some((dpi, target)) = next {
         info!(dpi, "DPI action → writing to device");
         write_dpi_in_background(target, dpi);
-    } else if matches!(
-        action,
-        Action::CycleDpiPresets | Action::SetDpiPreset(_)
-    ) {
+    } else if matches!(action, Action::CycleDpiPresets | Action::SetDpiPreset(_)) {
         info!(
             action = %action.label(),
             "no DPI presets configured for active device — press ignored"

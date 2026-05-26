@@ -22,8 +22,12 @@ devenv.local.yaml
 /.agents/
 /skills-lock.json
 
-# Local planning doc — kept on disk, never committed.
+# Local planning docs — kept on disk, never committed.
 /UI.md
+/PLAN.md
+
+# Claude Code worktree + transcripts — per-developer state.
+/.claude/
 
 # macOS finder metadata
 .DS_Store

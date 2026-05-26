@@ -32,6 +32,8 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 # Per-user cache directory resolution (mirrors openlogi-core/paths.rs).
 directories = { workspace = true }
+fs4 = { version = "1.1.0", features = ["sync"] }
+thiserror.workspace = true
 
 [lints]
 workspace = true
