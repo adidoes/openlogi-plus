@@ -80,6 +80,12 @@ impl AppSettings {
 pub struct DeviceConfig {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub button_bindings: BTreeMap<ButtonId, Action>,
+    /// Per-application binding overlays (P1.4). Keyed by bundle identifier
+    /// (e.g. `"com.microsoft.VSCode"` on macOS). When the foreground app's
+    /// id matches a key here, those bindings take precedence; anything not
+    /// listed falls through to `button_bindings`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub per_app_bindings: BTreeMap<String, BTreeMap<ButtonId, Action>>,
     /// Ordered list of DPI presets cycled through by
     /// [`Action::CycleDpiPresets`] and indexed by
     /// [`Action::SetDpiPreset`]. Empty means "no presets configured" —
@@ -188,6 +194,62 @@ impl Config {
             .or_default()
             .button_bindings
             .insert(button, action);
+    }
+
+    /// Resolve the effective binding map for `device_key`, overlaying the
+    /// per-app entry for `bundle_id` (if any) on top of the global per-device
+    /// `button_bindings`. Per-app values win; everything else falls through.
+    ///
+    /// Returns an empty map when the device has no recorded bindings yet.
+    /// Callers (the GUI / hook) layer their own defaults on top.
+    #[must_use]
+    pub fn effective_bindings(
+        &self,
+        device_key: &str,
+        bundle_id: Option<&str>,
+    ) -> BTreeMap<ButtonId, Action> {
+        let Some(device) = self.devices.get(device_key) else {
+            return BTreeMap::new();
+        };
+        let mut out = device.button_bindings.clone();
+        if let Some(bid) = bundle_id {
+            if let Some(overlay) = device.per_app_bindings.get(bid) {
+                for (k, v) in overlay {
+                    out.insert(*k, v.clone());
+                }
+            }
+        }
+        out
+    }
+
+    /// Records a per-app override. Creates the device + app entries as
+    /// needed; passing an action of `None` removes the override and prunes
+    /// the empty app map.
+    pub fn set_per_app_binding(
+        &mut self,
+        device_key: &str,
+        bundle_id: &str,
+        button: ButtonId,
+        action: Option<Action>,
+    ) {
+        let entry = self
+            .devices
+            .entry(device_key.to_string())
+            .or_default()
+            .per_app_bindings
+            .entry(bundle_id.to_string())
+            .or_default();
+        match action {
+            Some(a) => {
+                entry.insert(button, a);
+            }
+            None => {
+                entry.remove(&button);
+            }
+        }
+        if let Some(d) = self.devices.get_mut(device_key) {
+            d.per_app_bindings.retain(|_, m| !m.is_empty());
+        }
     }
 
     /// HID++ config key of the carousel-selected device, if any.
@@ -366,6 +428,55 @@ mod tests {
         cfg.set_selected_device(Some("2b042".into()));
         let parsed = write_and_read(&cfg);
         assert_eq!(parsed.selected_device(), Some("2b042"));
+    }
+
+    #[test]
+    fn per_app_overlay_takes_precedence() {
+        let mut cfg = Config::default();
+        cfg.set_binding("2b042", ButtonId::Back, Action::BrowserBack);
+        cfg.set_binding("2b042", ButtonId::Forward, Action::BrowserForward);
+        cfg.set_per_app_binding(
+            "2b042",
+            "com.microsoft.VSCode",
+            ButtonId::Back,
+            Some(Action::Undo),
+        );
+
+        // Global: both buttons are browser nav.
+        let global = cfg.effective_bindings("2b042", None);
+        assert_eq!(global.get(&ButtonId::Back), Some(&Action::BrowserBack));
+        assert_eq!(
+            global.get(&ButtonId::Forward),
+            Some(&Action::BrowserForward)
+        );
+
+        // VSCode: Back overridden, Forward inherits.
+        let vscode = cfg.effective_bindings("2b042", Some("com.microsoft.VSCode"));
+        assert_eq!(vscode.get(&ButtonId::Back), Some(&Action::Undo));
+        assert_eq!(
+            vscode.get(&ButtonId::Forward),
+            Some(&Action::BrowserForward)
+        );
+
+        // Unrelated app falls through.
+        let other = cfg.effective_bindings("2b042", Some("com.apple.Safari"));
+        assert_eq!(other.get(&ButtonId::Back), Some(&Action::BrowserBack));
+    }
+
+    #[test]
+    fn per_app_binding_removal_prunes_empty_app() {
+        let mut cfg = Config::default();
+        cfg.set_per_app_binding(
+            "2b042",
+            "com.example.App",
+            ButtonId::Back,
+            Some(Action::Copy),
+        );
+        cfg.set_per_app_binding("2b042", "com.example.App", ButtonId::Back, None);
+        assert!(
+            cfg.devices["2b042"].per_app_bindings.is_empty(),
+            "removing last override should prune the app entry"
+        );
     }
 
     #[test]

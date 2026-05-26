@@ -155,6 +155,24 @@ impl Hook {
     }
 }
 
+/// Return the macOS bundle identifier of the currently frontmost application,
+/// e.g. `"com.microsoft.VSCode"`. `None` when no app is frontmost, when
+/// reading the value fails, or on any non-macOS platform (P1.4).
+///
+/// Costs four `objc_msgSend`s plus a UTF-8 copy — well under a millisecond
+/// at the 1 Hz polling cadence in `openlogi-gui::app_watcher`.
+#[must_use]
+pub fn frontmost_bundle_id() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::frontmost_bundle_id()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
 // ---------------------------------------------------------------------------
 // macOS implementation
 // ---------------------------------------------------------------------------
@@ -196,6 +214,44 @@ mod macos {
         // SAFETY: NULL is documented as a valid argument; it queries the current
         // trust state without raising a permission dialog.
         unsafe { AXIsProcessTrustedWithOptions(std::ptr::null()) }
+    }
+
+    /// Read the frontmost application's bundle identifier via NSWorkspace.
+    /// Pure FFI — returns `None` when no app is frontmost or the identifier
+    /// is missing / non-UTF8.
+    pub(crate) fn frontmost_bundle_id() -> Option<String> {
+        use cocoa::base::{id, nil};
+        use cocoa::foundation::NSString;
+        use objc::{class, msg_send, sel, sel_impl};
+
+        // SAFETY: NSWorkspace is part of AppKit, available on every supported
+        // macOS (≥13.0). Each `msg_send!` returns either `nil` (handled below)
+        // or an autoreleased Objective-C object that outlives this synchronous
+        // function. NSString::UTF8String borrows the buffer for the lifetime
+        // of the surrounding autorelease pool — copying into an owned `String`
+        // before returning keeps the value valid for callers.
+        unsafe {
+            let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+            if workspace == nil {
+                return None;
+            }
+            let app: id = msg_send![workspace, frontmostApplication];
+            if app == nil {
+                return None;
+            }
+            let bundle_id: id = msg_send![app, bundleIdentifier];
+            if bundle_id == nil {
+                return None;
+            }
+            let ptr: *const std::os::raw::c_char = NSString::UTF8String(bundle_id);
+            if ptr.is_null() {
+                return None;
+            }
+            std::ffi::CStr::from_ptr(ptr)
+                .to_str()
+                .ok()
+                .map(str::to_owned)
+        }
     }
 
     /// Translate a raw OS button number to a [`ButtonId`].

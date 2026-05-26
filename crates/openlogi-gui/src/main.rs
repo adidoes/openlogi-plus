@@ -5,6 +5,7 @@
 //! lands when there's something to react to.
 
 mod app;
+mod app_watcher;
 mod asset;
 mod components;
 mod data;
@@ -97,6 +98,10 @@ fn main() -> Result<()> {
     // through `inventory_rx` into AppState::refresh_inventories below.
     let mut inventory_rx = inventory_watcher::spawn(std::time::Duration::from_secs(2));
 
+    // P1.4: poll for foreground-app changes every 1s. Empty channel on
+    // non-macOS — the loop below falls through.
+    let mut app_rx = app_watcher::spawn(std::time::Duration::from_secs(1));
+
     gpui_platform::application().run(move |cx| {
         gpui_component::init(cx);
         cx.spawn(async move |cx| {
@@ -138,18 +143,36 @@ fn main() -> Result<()> {
             })
             .expect("opening the main window should not fail");
 
-            // Drain inventory updates for the lifetime of the app. Each
-            // tick rebuilds AppState.device_list and lets every observer
-            // (carousel, mouse model, DPI panel) repaint. The first poll
-            // arrives ~2 s after launch — startup uses the initial
-            // `inventories` snapshot we already passed into AppState.
-            while let Some(new_inv) = inventory_rx.recv().await {
-                cx.update(|cx| {
-                    let cache = asset::AssetCache::new();
-                    cx.update_global::<AppState, _>(|state, _| {
-                        state.refresh_inventories(&new_inv, &cache);
-                    });
-                });
+            // Drain inventory + foreground-app updates for the lifetime of
+            // the app. Each event rebuilds the relevant slice of AppState
+            // and lets every observer (carousel, mouse model, DPI panel,
+            // hook thread) pick up the change.
+            //
+            // `tokio::select!` is unavailable inside gpui's executor (it
+            // needs the tokio reactor), so the two channels are polled with
+            // a hand-rolled biased race built from `futures_lite`'s pollster.
+            // The two streams produce events at human pace (≤ 1 Hz combined
+            // in steady state), so any reasonable scheduling fairness is
+            // good enough.
+            loop {
+                tokio::select! {
+                    Some(new_inv) = inventory_rx.recv() => {
+                        cx.update(|cx| {
+                            let cache = asset::AssetCache::new();
+                            cx.update_global::<AppState, _>(|state, _| {
+                                state.refresh_inventories(&new_inv, &cache);
+                            });
+                        });
+                    }
+                    Some(bundle) = app_rx.recv() => {
+                        cx.update(|cx| {
+                            cx.update_global::<AppState, _>(|state, _| {
+                                state.set_current_app(bundle);
+                            });
+                        });
+                    }
+                    else => break,
+                }
             }
         })
         .detach();

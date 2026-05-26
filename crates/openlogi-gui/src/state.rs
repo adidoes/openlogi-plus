@@ -83,6 +83,10 @@ pub struct AppState {
     /// be out of bounds briefly while inventories re-enumerate; views must
     /// bounds-check via [`Self::current_record`].
     pub current_device: usize,
+    /// Bundle identifier of the frontmost macOS app (P1.4), or `None` on
+    /// non-macOS / no frontmost app. Used to overlay per-app bindings on
+    /// top of the per-device global map.
+    pub current_app_bundle: Option<String>,
     /// The hotspot the user most recently armed by clicking. Drives the
     /// "selected button" outline on the mouse model and the popover content.
     pub active_button: Option<ButtonId>,
@@ -142,6 +146,7 @@ impl AppState {
         let current_device = pick_initial_device(&device_list, config.selected_device());
         let mut state = Self {
             current_device,
+            current_app_bundle: None,
             active_button: None,
             button_bindings: BTreeMap::new(),
             dpi: DEFAULT_DPI,
@@ -154,6 +159,22 @@ impl AppState {
         state.sync_hook_bindings();
         state.sync_dpi_cycle();
         state
+    }
+
+    /// Update the frontmost-app tracking + reload the binding map to overlay
+    /// any per-app overrides for the new app (P1.4). Hook-shared `Arc` gets
+    /// the same map so background button presses observe the new bindings
+    /// immediately.
+    ///
+    /// No-op when `bundle` matches the current value.
+    pub fn set_current_app(&mut self, bundle: Option<String>) {
+        if bundle == self.current_app_bundle {
+            return;
+        }
+        debug!(?bundle, "foreground app changed");
+        self.current_app_bundle = bundle;
+        self.button_bindings = self.bindings_for_current();
+        self.sync_hook_bindings();
     }
 
     /// The active device, or `None` when [`Self::device_list`] is empty or
@@ -293,7 +314,10 @@ impl AppState {
     fn bindings_for_current(&self) -> BTreeMap<ButtonId, Action> {
         let stored = self
             .current_record()
-            .map(|r| self.config.bindings_for(&r.config_key))
+            .map(|r| {
+                self.config
+                    .effective_bindings(&r.config_key, self.current_app_bundle.as_deref())
+            })
             .unwrap_or_default();
         let mut bindings: BTreeMap<ButtonId, Action> = ButtonId::ALL
             .iter()
