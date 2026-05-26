@@ -65,7 +65,27 @@ pub async fn set_dpi(receiver_uid: Option<&str>, slot: u8, dpi: u16) -> Result<(
             .set_sensor_dpi(0, dpi)
             .await
             .map_err(|e| WriteError::Hidpp(format!("{e:?}")))?;
-        debug!(slot, dpi, "wrote DPI");
+        // PLAN.md "outstanding minor items": read back to confirm the
+        // firmware accepted the value. A mismatch is a silent failure
+        // mode that's otherwise invisible — devices in low-power states
+        // or with unsupported DPI ranges can ACK the write yet keep the
+        // old value. We log a warning but still return Ok because the
+        // request reached the device.
+        if let Ok(actual) = feature.get_sensor_dpi(0).await {
+            if actual == dpi {
+                debug!(slot, dpi, "wrote DPI (verified)");
+            } else {
+                tracing::warn!(
+                    slot,
+                    requested = dpi,
+                    actual,
+                    "DPI write accepted but device reports a different value — \
+                     likely out of the device's supported range"
+                );
+            }
+        } else {
+            debug!(slot, dpi, "wrote DPI (read-back skipped)");
+        }
         Ok(())
     })
     .await
