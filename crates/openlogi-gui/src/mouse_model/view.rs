@@ -191,10 +191,15 @@ fn asset_dimensions(meta: &Metadata, target_h: f32) -> (f32, f32) {
 
 /// Convert Logitech's percent-based markers into mouse-local pixel rects.
 /// Each marker is a point, so we centre a fixed-size hit area on it.
-/// Unknown slot names fall through silently — extending `ButtonId` to
-/// cover thumbwheels / modeshift buttons brings more hotspots online.
+/// Unknown slot names fall through silently — extending `ButtonId` and
+/// `map_slot_name` brings more hotspots online.
+///
+/// Logi metadata omits primary clicks (Options+ doesn't expose them), so we
+/// append fallback hotspots for `LeftClick` / `RightClick` at standard
+/// top-of-mouse positions when missing — OpenLogi lets users bind those too.
 fn asset_hotspots(meta: &Metadata, mouse_w: f32, mouse_h: f32) -> Vec<Hotspot> {
-    meta.assignments()
+    let mut hotspots: Vec<Hotspot> = meta
+        .assignments()
         .filter_map(|a| {
             let id = map_slot_name(&a.slot_name)?;
             let cx = a.marker.x / 100. * mouse_w;
@@ -207,7 +212,31 @@ fn asset_hotspots(meta: &Metadata, mouse_w: f32, mouse_h: f32) -> Vec<Hotspot> {
                 h: ASSET_HOTSPOT,
             })
         })
-        .collect()
+        .collect();
+    let has_left = hotspots.iter().any(|h| h.id == ButtonId::LeftClick);
+    let has_right = hotspots.iter().any(|h| h.id == ButtonId::RightClick);
+    let make_default = |id: ButtonId, px_x: f32, px_y: f32| Hotspot {
+        id,
+        x: px_x - ASSET_HOTSPOT / 2.,
+        y: px_y - ASSET_HOTSPOT / 2.,
+        w: ASSET_HOTSPOT,
+        h: ASSET_HOTSPOT,
+    };
+    if !has_left {
+        hotspots.push(make_default(
+            ButtonId::LeftClick,
+            0.28 * mouse_w,
+            0.12 * mouse_h,
+        ));
+    }
+    if !has_right {
+        hotspots.push(make_default(
+            ButtonId::RightClick,
+            0.58 * mouse_w,
+            0.12 * mouse_h,
+        ));
+    }
+    hotspots
 }
 
 /// Logitech's stable slot vocabulary → OpenLogi's `ButtonId`. Intentionally
@@ -221,6 +250,8 @@ fn map_slot_name(name: &str) -> Option<ButtonId> {
         "SLOT_NAME_BACK_BUTTON" => Some(ButtonId::Back),
         "SLOT_NAME_FORWARD_BUTTON" => Some(ButtonId::Forward),
         "SLOT_NAME_MODESHIFT_BUTTON" => Some(ButtonId::DpiToggle),
+        "SLOT_NAME_THUMBWHEEL" => Some(ButtonId::Thumbwheel),
+        "SLOT_NAME_GESTURE_BUTTON" => Some(ButtonId::GestureButton),
         _ => None,
     }
 }
@@ -381,6 +412,12 @@ fn hotspot_popover(
     active: Option<ButtonId>,
     view: &Entity<MouseModelView>,
 ) -> AnyElement {
+    // Position the Popover wrapper, not the trigger. gpui-component's
+    // Popover renders its trigger inside a parent div that carries the
+    // `on_mouse_down` handler; if the trigger is `.absolute()`, the
+    // wrapper div collapses to 0×0 and clicks never hit the handler.
+    // Putting `.absolute()` on the wrapper and a w_full/h_full trigger
+    // keeps the wrapper sized to the hotspot.
     let view = view.clone();
     let trigger = HotspotTrigger {
         id: ("hotspot-trigger", idx).into(),
@@ -389,11 +426,19 @@ fn hotspot_popover(
         view: view.clone(),
         selected: false,
     };
-    Popover::new(("hotspot-popover", idx))
-        .anchor(Anchor::TopRight)
-        .mouse_button(MouseButton::Left)
-        .trigger(trigger)
-        .content(move |_state, _window, cx| action_picker(hotspot.id, &view, cx))
+    div()
+        .absolute()
+        .left(px(hotspot.x))
+        .top(px(hotspot.y))
+        .w(px(hotspot.w))
+        .h(px(hotspot.h))
+        .child(
+            Popover::new(("hotspot-popover", idx))
+                .anchor(Anchor::TopRight)
+                .mouse_button(MouseButton::Left)
+                .trigger(trigger)
+                .content(move |_state, _window, cx| action_picker(hotspot.id, &view, cx)),
+        )
         .into_any_element()
 }
 
@@ -420,17 +465,16 @@ impl Selectable for HotspotTrigger {
 impl RenderOnce for HotspotTrigger {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let highlighted = self.hovered || self.selected;
-        let hotspot = self.hotspot;
         let view = self.view;
-        let btn = hotspot.id;
+        let btn = self.hotspot.id;
 
+        // Relative-positioned, fills its parent (the wrapper div in
+        // `hotspot_popover` carries the absolute positioning). Without
+        // explicit width/height the gpui-component popover wrapper would
+        // collapse to 0×0 and never receive clicks.
         div()
             .id(self.id)
-            .absolute()
-            .left(px(hotspot.x))
-            .top(px(hotspot.y))
-            .w(px(hotspot.w))
-            .h(px(hotspot.h))
+            .size_full()
             .rounded_md()
             .border_2()
             .border_color(if highlighted {

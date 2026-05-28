@@ -20,17 +20,27 @@ pub enum ButtonId {
     MiddleClick,
     Back,
     Forward,
+    /// The "ModeShift" button under the wheel — typically used for SmartShift /
+    /// DPI cycle. Named `DpiToggle` for historical reasons.
     DpiToggle,
+    /// The horizontal thumb wheel found on MX-line devices. Bind a click
+    /// action; rotation isn't bindable yet (P1.2 / P1.5 follow-up).
+    Thumbwheel,
+    /// The thumb-pad gesture button on MX-line devices. The press itself
+    /// fires the bound action; swipe directions are P1.5 territory.
+    GestureButton,
 }
 
 impl ButtonId {
-    pub const ALL: [ButtonId; 6] = [
+    pub const ALL: [ButtonId; 8] = [
         ButtonId::LeftClick,
         ButtonId::RightClick,
         ButtonId::MiddleClick,
         ButtonId::Back,
         ButtonId::Forward,
         ButtonId::DpiToggle,
+        ButtonId::Thumbwheel,
+        ButtonId::GestureButton,
     ];
 
     /// Human-readable label for popovers and tooltips.
@@ -43,6 +53,8 @@ impl ButtonId {
             ButtonId::Back => "Back",
             ButtonId::Forward => "Forward",
             ButtonId::DpiToggle => "DPI Toggle",
+            ButtonId::Thumbwheel => "Thumb Wheel",
+            ButtonId::GestureButton => "Gesture Button",
         }
     }
 }
@@ -680,6 +692,12 @@ mod macos {
 }
 
 /// Sensible defaults for a fresh device so the panel isn't empty on first run.
+///
+/// Thumbwheel / GestureButton defaults match what Logi Options+ ships for
+/// MX-line devices: thumb wheel click → App Exposé, gesture button →
+/// Mission Control. They become functional once the hook layer captures
+/// these inputs (P1.5 follow-up); the bindings persist meanwhile so the
+/// user only configures once.
 #[must_use]
 pub fn default_binding(button: ButtonId) -> Action {
     match button {
@@ -689,6 +707,8 @@ pub fn default_binding(button: ButtonId) -> Action {
         ButtonId::Back => Action::BrowserBack,
         ButtonId::Forward => Action::BrowserForward,
         ButtonId::DpiToggle => Action::CycleDpiPresets,
+        ButtonId::Thumbwheel => Action::AppExpose,
+        ButtonId::GestureButton => Action::MissionControl,
     }
 }
 

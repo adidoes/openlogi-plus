@@ -6,14 +6,15 @@
 //! (placeholders for the eventual multi-tab config panel).
 
 use gpui::{
-    AppContext as _, Context, Entity, FontWeight, IntoElement, ParentElement, Render, Styled,
-    Window, div, px, rgb,
+    AppContext as _, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement,
+    Render, Styled, Window, div, px, rgb,
 };
 use gpui_component::{ActiveTheme, h_flex, v_flex};
 use openlogi_core::config::Config;
 use openlogi_core::device::DeviceInventory;
 use tracing::{info, warn};
 
+use crate::app_menu::{Minimize, Zoom};
 use crate::asset::AssetCache;
 use crate::components::device_carousel::DeviceCarousel;
 use crate::components::dpi_panel::DpiPanel;
@@ -82,6 +83,8 @@ impl Render for AppView {
             .size_full()
             .bg(rgb(BG_DARK))
             .text_color(rgb(TEXT_PRIMARY))
+            .on_action(|_: &Minimize, window, _| window.minimize_window())
+            .on_action(|_: &Zoom, window, _| window.zoom_window())
             .child(header(&self.carousel))
             .child(body(&self.mouse_model, &self.dpi_panel, &self.gesture_pad))
             .child(footer(cx))

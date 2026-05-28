@@ -5,6 +5,7 @@
 //! lands when there's something to react to.
 
 mod app;
+mod app_menu;
 mod app_watcher;
 mod asset;
 mod components;
@@ -107,6 +108,7 @@ fn main() -> Result<()> {
 
     gpui_platform::application().run(move |cx| {
         gpui_component::init(cx);
+        app_menu::install(cx);
         cx.spawn(async move |cx| {
             let bounds = cx.update(|cx| Bounds::centered(None, Size::new(px(1100.), px(750.)), cx));
             let options = WindowOptions {
