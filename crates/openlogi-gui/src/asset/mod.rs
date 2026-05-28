@@ -34,6 +34,14 @@ pub struct ResolvedAsset {
     pub display_name: String,
     pub image_path: PathBuf,
     pub metadata: Metadata,
+    /// Actual pixel dimensions of `image_path`. Logi's
+    /// `core_metadata.json` `origin` field tracks the *bbox of the mouse
+    /// silhouette inside* the PNG — the PNG ships with extra transparent
+    /// padding on the sides. Without the real PNG size we can't tell
+    /// where that padding lives, and hotspot percentages drift off the
+    /// real buttons.
+    pub png_width: u32,
+    pub png_height: u32,
 }
 
 pub struct AssetCache {
@@ -118,11 +126,28 @@ impl AssetCache {
                     continue;
                 }
             };
+            let (png_width, png_height) = match read_png_dimensions(&image_path) {
+                Ok(dims) => dims,
+                Err(e) => {
+                    warn!(
+                        path = %image_path.display(),
+                        error = %e,
+                        "could not read PNG dimensions — falling back to metadata origin"
+                    );
+                    let origin = metadata.origin();
+                    (
+                        origin.map_or(0, |o| o.width),
+                        origin.map_or(0, |o| o.height),
+                    )
+                }
+            };
             debug!(
                 depot,
                 root = %root.display(),
                 image = %image_name,
                 ext = model.extended_model_id,
+                png_width,
+                png_height,
                 "asset hit"
             );
             return Some(ResolvedAsset {
@@ -130,11 +155,46 @@ impl AssetCache {
                 display_name: entry.display_name.clone(),
                 image_path,
                 metadata,
+                png_width,
+                png_height,
             });
         }
         debug!(depot, "asset cache miss across all roots");
         None
     }
+}
+
+/// Read width + height from a PNG's `IHDR` chunk.
+///
+/// PNG layout: 8-byte signature, then chunks. The first chunk is always
+/// `IHDR` per the spec, located at bytes 12–24: 4 bytes length, 4 bytes
+/// type tag, then the data. The first 8 data bytes are width + height as
+/// big-endian u32s. We only need those 24 leading bytes — much cheaper
+/// than decoding the whole image.
+fn read_png_dimensions(path: &Path) -> std::io::Result<(u32, u32)> {
+    use std::fs::File;
+    use std::io::{Read, Seek, SeekFrom};
+    const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    let mut file = File::open(path)?;
+    let mut header = [0u8; 24];
+    file.read_exact(&mut header)?;
+    if header[0..8] != PNG_SIGNATURE {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "missing PNG signature",
+        ));
+    }
+    if &header[12..16] != b"IHDR" {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "missing IHDR chunk",
+        ));
+    }
+    let width = u32::from_be_bytes([header[16], header[17], header[18], header[19]]);
+    let height = u32::from_be_bytes([header[20], header[21], header[22], header[23]]);
+    // Re-seek to start so any later reader sees the full file.
+    file.seek(SeekFrom::Start(0))?;
+    Ok((width, height))
 }
 
 /// Walk the depot's `manifest.json` (if present) for the colour

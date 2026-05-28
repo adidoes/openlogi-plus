@@ -18,8 +18,7 @@ use gpui::{
 };
 use gpui_component::{Selectable, popover::Popover, v_flex};
 
-use openlogi_assets::Metadata;
-
+use crate::asset::ResolvedAsset;
 use crate::data::mouse_buttons::{Action, ButtonId, Hotspot, MOUSE_MODEL_SIZE, default_hotspots};
 use crate::mouse_model::leader_lines::{
     Geometry as LeaderGeometry, Label, Side, paint as paint_leader_lines,
@@ -95,8 +94,8 @@ impl Render for MouseModelView {
         let (mouse_w, mouse_h) = MOUSE_MODEL_SIZE;
         let (mouse_w, mouse_h, hotspots, labels) = match asset.as_ref() {
             Some(a) => {
-                let (w, h) = asset_dimensions(&a.metadata, mouse_h);
-                let hotspots = asset_hotspots(&a.metadata, w, h);
+                let (w, h) = asset_dimensions_for_png(a, mouse_h);
+                let hotspots = asset_hotspots_for_png(a, w, h);
                 let labels = labels_from_hotspots(&hotspots);
                 (w, h, hotspots, labels)
             }
@@ -207,34 +206,68 @@ impl Render for MouseModelView {
     }
 }
 
-/// Scale the device image to fit a target height while preserving aspect.
+/// Scale the device image to fit a target height while preserving the
+/// **actual PNG's** aspect ratio. The metadata's `origin` reports the
+/// silhouette bbox inside the PNG, which is typically narrower than the
+/// full image (Logi pads transparent strips on both sides); sizing by
+/// origin causes `ObjectFit::Contain` to letterbox vertically and pulls
+/// every hotspot off the rendered button.
 #[allow(
     clippy::cast_precision_loss,
     reason = "device images are < 4096 px on either axis — well within f32 mantissa"
 )]
-fn asset_dimensions(meta: &Metadata, target_h: f32) -> (f32, f32) {
-    let Some(origin) = meta.origin() else {
+fn asset_dimensions_for_png(asset: &ResolvedAsset, target_h: f32) -> (f32, f32) {
+    if asset.png_height == 0 {
         return MOUSE_MODEL_SIZE;
-    };
-    let w = target_h * (origin.width as f32) / (origin.height as f32);
+    }
+    let w = target_h * (asset.png_width as f32) / (asset.png_height as f32);
     (w, target_h)
 }
 
-/// Convert Logitech's percent-based markers into mouse-local pixel rects.
-/// Each marker is a point, so we centre a fixed-size hit area on it.
-/// Unknown slot names fall through silently — extending `ButtonId` and
-/// `map_slot_name` brings more hotspots online.
+/// Convert Logitech's percent-based markers into mouse-local pixel rects,
+/// translating from the metadata's "origin" coord system (the silhouette
+/// bbox) into the actual rendered PNG coord system.
 ///
-/// Logi metadata omits primary clicks (Options+ doesn't expose them), so we
-/// append fallback hotspots for `LeftClick` / `RightClick` at standard
-/// top-of-mouse positions when missing — OpenLogi lets users bind those too.
-fn asset_hotspots(meta: &Metadata, mouse_w: f32, mouse_h: f32) -> Vec<Hotspot> {
-    let mut hotspots: Vec<Hotspot> = meta
+/// Logi's markers are percentages of `origin` (the silhouette bbox).
+/// Within the actual PNG, that bbox is centred with equal padding on the
+/// left and right. We render at the *PNG's* full aspect (no letterboxing)
+/// so the marker translation is:
+///
+/// ```text
+/// bbox_w_rendered = mouse_w * origin.width  / png.width
+/// bbox_x_offset   = (mouse_w - bbox_w_rendered) / 2
+/// hotspot.x       = bbox_x_offset + marker.x / 100 * bbox_w_rendered
+/// hotspot.y       = marker.y / 100 * mouse_h     // height ratio is 1:1
+/// ```
+///
+/// Fallback hotspots for Left/Right Click (Logi omits them from metadata)
+/// are appended at standard top-of-mouse percentages of the bbox so they
+/// still land on the visible buttons.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "device images are < 4096 px on either axis — well within f32 mantissa"
+)]
+fn asset_hotspots_for_png(asset: &ResolvedAsset, mouse_w: f32, mouse_h: f32) -> Vec<Hotspot> {
+    let png_w = asset.png_width as f32;
+    let origin_w = asset
+        .metadata
+        .origin()
+        .map_or(png_w, |o| o.width as f32)
+        .min(png_w);
+    let bbox_w_rendered = if png_w > 0. { mouse_w * origin_w / png_w } else { mouse_w };
+    let bbox_x_offset = (mouse_w - bbox_w_rendered) / 2.;
+    let marker_to_canvas = |mx: f32, my: f32| -> (f32, f32) {
+        let cx = bbox_x_offset + mx / 100. * bbox_w_rendered;
+        let cy = my / 100. * mouse_h;
+        (cx, cy)
+    };
+
+    let mut hotspots: Vec<Hotspot> = asset
+        .metadata
         .assignments()
         .filter_map(|a| {
             let id = map_slot_name(&a.slot_name)?;
-            let cx = a.marker.x / 100. * mouse_w;
-            let cy = a.marker.y / 100. * mouse_h;
+            let (cx, cy) = marker_to_canvas(a.marker.x, a.marker.y);
             Some(Hotspot {
                 id,
                 x: cx - ASSET_HOTSPOT / 2.,
@@ -246,26 +279,25 @@ fn asset_hotspots(meta: &Metadata, mouse_w: f32, mouse_h: f32) -> Vec<Hotspot> {
         .collect();
     let has_left = hotspots.iter().any(|h| h.id == ButtonId::LeftClick);
     let has_right = hotspots.iter().any(|h| h.id == ButtonId::RightClick);
-    let make_default = |id: ButtonId, px_x: f32, px_y: f32| Hotspot {
-        id,
-        x: px_x - ASSET_HOTSPOT / 2.,
-        y: px_y - ASSET_HOTSPOT / 2.,
-        w: ASSET_HOTSPOT,
-        h: ASSET_HOTSPOT,
-    };
     if !has_left {
-        hotspots.push(make_default(
-            ButtonId::LeftClick,
-            0.28 * mouse_w,
-            0.12 * mouse_h,
-        ));
+        let (cx, cy) = marker_to_canvas(28., 12.);
+        hotspots.push(Hotspot {
+            id: ButtonId::LeftClick,
+            x: cx - ASSET_HOTSPOT / 2.,
+            y: cy - ASSET_HOTSPOT / 2.,
+            w: ASSET_HOTSPOT,
+            h: ASSET_HOTSPOT,
+        });
     }
     if !has_right {
-        hotspots.push(make_default(
-            ButtonId::RightClick,
-            0.58 * mouse_w,
-            0.12 * mouse_h,
-        ));
+        let (cx, cy) = marker_to_canvas(72., 12.);
+        hotspots.push(Hotspot {
+            id: ButtonId::RightClick,
+            x: cx - ASSET_HOTSPOT / 2.,
+            y: cy - ASSET_HOTSPOT / 2.,
+            w: ASSET_HOTSPOT,
+            h: ASSET_HOTSPOT,
+        });
     }
     hotspots
 }
