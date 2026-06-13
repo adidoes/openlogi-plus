@@ -41,6 +41,7 @@ launch_at_login = true
 language = "en"
 
 [devices.2b042]
+gesture_owner = "GestureButton"   # or another capable button, or "Off"
 dpi_presets = [800, 1600, 3200]
 
 [devices.2b042.bindings]
@@ -56,7 +57,12 @@ Left = "PreviousDesktop"
 Right = "NextDesktop"
 
 # Per-app overlay: Back becomes Undo only while VS Code is frontmost.
+# The key is the app id: a bundle id on macOS, the X11 WM_CLASS on Linux.
 [devices.2b042.per_app_bindings."com.microsoft.VSCode"]
+Back = "Undo"
+
+# On Linux the same overlay keys off the window's WM_CLASS instead:
+[devices.2b042.per_app_bindings."code"]
 Back = "Undo"
 
 [devices.2b042.lighting]
@@ -66,5 +72,5 @@ brightness = 80
 ```
 
 Action names are the catalog's variant names (`LeftClick`, `MouseBack`,
-`Copy`, `PlayPause`, `CycleDpiPresets`, …); recorded keyboard shortcuts
-serialize as a `CustomShortcut` table written by the GUI's recorder.
+`Copy`, `PlayPause`, `CycleDpiPresets`, …); custom keyboard shortcuts
+serialize as a `CustomShortcut` table.
