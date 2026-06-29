@@ -34,23 +34,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libudev-dev pkg-config gcc g++ clang libssl-dev libzstd-dev
-      # GitHub App token (not a PAT) so the release PR / tag trigger CI and the
-      # DMG release workflow — the default GITHUB_TOKEN cannot trigger workflows.
-      # App credentials come from the same 1Password item as release.yml.
-      - name: Mint GitHub App token
-        id: app-token
-        uses: ./.github/actions/github-app-token-from-1password
-        with:
-          op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          op-github-app-item: ${{ secrets.OP_GITHUB_APP_ITEM }}
       - name: Run release-plz (release-pr)
         id: release_pr
         uses: release-plz/action@v0.5
         with:
           command: release-pr
         env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          CARGO_REGISTRY_TOKEN: ${{ steps.app-token.outputs.cargo-registry-token }}
+          # Must be a real PAT, not GITHUB_TOKEN: the release tag it creates
+          # needs to trigger release.yml.
+          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       # `release-plz/action` swallows a release-pr HTTP 422 as a warning and
       # reports no PR, which silently stalls releases (it looks identical to a
       # quiet week of commits). Fail loudly when release-plz opened/updated no
@@ -63,7 +56,7 @@ jobs:
         if: steps.release_pr.outputs.prs_created == 'false'
         uses: actions/github-script@v8
         with:
-          github-token: ${{ steps.app-token.outputs.token }}
+          github-token: ${{ secrets.RELEASE_BOT_TOKEN }}
           script: |
             const { readFileSync } = require("node:fs");
             const { owner, repo } = context.repo;
@@ -145,16 +138,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libudev-dev pkg-config gcc g++ clang libssl-dev libzstd-dev
-      - name: Mint GitHub App token
-        id: app-token
-        uses: ./.github/actions/github-app-token-from-1password
-        with:
-          op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          op-github-app-item: ${{ secrets.OP_GITHUB_APP_ITEM }}
       - name: Run release-plz (release)
         uses: release-plz/action@v0.5
         with:
           command: release
         env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          CARGO_REGISTRY_TOKEN: ${{ steps.app-token.outputs.cargo-registry-token }}
+          # Must be a real PAT, not GITHUB_TOKEN: the release tag it creates
+          # needs to trigger release.yml.
+          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

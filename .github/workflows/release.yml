@@ -45,24 +45,6 @@ jobs:
       - name: Verify runner architecture
         run: test "$(uname -m)" = "${{ matrix.arch }}"
 
-      - name: Load release secrets from 1Password
-        id: load_secrets
-        uses: 1password/load-secrets-action@v4
-        with:
-          export-env: false
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.OP_APPLE_SECRET_ITEM }}/APPLE_SIGNING_IDENTITY
-          APPLE_CERTIFICATE: ${{ secrets.OP_APPLE_SECRET_ITEM }}/APPLE_CERTIFICATE
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.OP_APPLE_SECRET_ITEM }}/APPLE_CERTIFICATE_PASSWORD
-          APPLE_ID: ${{ secrets.OP_APPLE_SECRET_ITEM }}/APPLE_ID
-          APPLE_PASSWORD: ${{ secrets.OP_APPLE_SECRET_ITEM }}/APPLE_PASSWORD
-          APPLE_TEAM_ID: ${{ secrets.OP_APPLE_SECRET_ITEM }}/APPLE_TEAM_ID
-          GITHUB_APP_ID: ${{ secrets.OP_GITHUB_APP_ITEM }}/GITHUB_APP_ID
-          GITHUB_APP_PRIVATE_KEY: ${{ secrets.OP_GITHUB_APP_ITEM }}/GITHUB_APP_PRIVATE_KEY
-          OPENLOGI_UPDATE_BASE_URL: ${{ secrets.OP_R2_SECRET_ITEM }}/OPENLOGI_UPDATE_BASE_URL
-          OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY: ${{ secrets.OP_R2_SECRET_ITEM }}/OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY
-
       - name: Install packaging tools
         run: |
           brew install librsvg
@@ -70,39 +52,35 @@ jobs:
 
       - name: Validate release secrets
         env:
-          APPLE_SIGNING_IDENTITY: ${{ steps.load_secrets.outputs.APPLE_SIGNING_IDENTITY }}
-          APPLE_CERTIFICATE: ${{ steps.load_secrets.outputs.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ steps.load_secrets.outputs.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ steps.load_secrets.outputs.APPLE_ID }}
-          APPLE_PASSWORD: ${{ steps.load_secrets.outputs.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ steps.load_secrets.outputs.APPLE_TEAM_ID }}
-          GITHUB_APP_ID: ${{ steps.load_secrets.outputs.GITHUB_APP_ID }}
-          GITHUB_APP_PRIVATE_KEY: ${{ steps.load_secrets.outputs.GITHUB_APP_PRIVATE_KEY }}
-          OPENLOGI_UPDATE_BASE_URL: ${{ steps.load_secrets.outputs.OPENLOGI_UPDATE_BASE_URL }}
-          OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY: ${{ steps.load_secrets.outputs.OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          OPENLOGI_UPDATE_BASE_URL: ${{ secrets.OPENLOGI_UPDATE_BASE_URL }}
+          OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY: ${{ secrets.OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY }}
         run: |
           set -euo pipefail
-          : "${APPLE_SIGNING_IDENTITY:?Configure APPLE_SIGNING_IDENTITY in 1Password}"
-          : "${APPLE_CERTIFICATE:?Configure APPLE_CERTIFICATE in 1Password}"
-          : "${APPLE_CERTIFICATE_PASSWORD:?Configure APPLE_CERTIFICATE_PASSWORD in 1Password}"
-          : "${APPLE_ID:?Configure APPLE_ID in 1Password}"
-          : "${APPLE_PASSWORD:?Configure APPLE_PASSWORD in 1Password}"
-          : "${APPLE_TEAM_ID:?Configure APPLE_TEAM_ID in 1Password}"
-          : "${GITHUB_APP_ID:?Configure GITHUB_APP_ID in 1Password}"
-          : "${GITHUB_APP_PRIVATE_KEY:?Configure GITHUB_APP_PRIVATE_KEY in 1Password}"
-          : "${OPENLOGI_UPDATE_BASE_URL:?Configure OPENLOGI_UPDATE_BASE_URL in 1Password}"
-          : "${OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY:?Configure OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY in 1Password}"
+          : "${APPLE_SIGNING_IDENTITY:?Configure APPLE_SIGNING_IDENTITY as a GitHub secret}"
+          : "${APPLE_CERTIFICATE:?Configure APPLE_CERTIFICATE as a GitHub secret}"
+          : "${APPLE_CERTIFICATE_PASSWORD:?Configure APPLE_CERTIFICATE_PASSWORD as a GitHub secret}"
+          : "${APPLE_ID:?Configure APPLE_ID as a GitHub secret}"
+          : "${APPLE_PASSWORD:?Configure APPLE_PASSWORD as a GitHub secret}"
+          : "${APPLE_TEAM_ID:?Configure APPLE_TEAM_ID as a GitHub secret}"
+          : "${OPENLOGI_UPDATE_BASE_URL:?Configure OPENLOGI_UPDATE_BASE_URL as a GitHub secret}"
+          : "${OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY:?Configure OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY as a GitHub secret}"
 
       - name: Import Apple signing certificate
         uses: apple-actions/import-codesign-certs@v7
         with:
-          p12-file-base64: ${{ steps.load_secrets.outputs.APPLE_CERTIFICATE }}
-          p12-password: ${{ steps.load_secrets.outputs.APPLE_CERTIFICATE_PASSWORD }}
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
 
       - name: Build OpenLogi.app with cargo-bundle
         env:
-          OPENLOGI_UPDATE_BASE_URL: ${{ steps.load_secrets.outputs.OPENLOGI_UPDATE_BASE_URL }}
-          OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY: ${{ steps.load_secrets.outputs.OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY }}
+          OPENLOGI_UPDATE_BASE_URL: ${{ secrets.OPENLOGI_UPDATE_BASE_URL }}
+          OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY: ${{ secrets.OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY }}
         run: |
           set -euo pipefail
           export OPENLOGI_UPDATE_MANIFEST_URL="${OPENLOGI_UPDATE_BASE_URL%/}/channels/stable/latest.json"
@@ -110,7 +88,7 @@ jobs:
 
       - name: Sign app bundle
         env:
-          APPLE_SIGNING_IDENTITY: ${{ steps.load_secrets.outputs.APPLE_SIGNING_IDENTITY }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
           app="target/release/bundle/osx/OpenLogi.app"
@@ -131,16 +109,16 @@ jobs:
 
       - name: Create and sign DMG
         env:
-          APPLE_SIGNING_IDENTITY: ${{ steps.load_secrets.outputs.APPLE_SIGNING_IDENTITY }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
           cargo run -p xtask -- macos dmg --sign-identity "$APPLE_SIGNING_IDENTITY"
 
       - name: Notarize DMG
         env:
-          APPLE_ID: ${{ steps.load_secrets.outputs.APPLE_ID }}
-          APPLE_PASSWORD: ${{ steps.load_secrets.outputs.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ steps.load_secrets.outputs.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           xcrun notarytool submit target/release/OpenLogi.dmg \
@@ -214,45 +192,23 @@ jobs:
       # caches no future tag can restore (and no default-branch job produces a
       # matching key), so the save was pure overhead churning the cache quota.
 
-      # Azure signing config lives in 1Password, matching the macOS job's secret flow.
-      # load-secrets-action is a node action, so it runs on Windows runners too. The
-      # client/tenant/subscription IDs are not secrets under OIDC, but are centralised
-      # here so all release config has a single source of truth.
-      - name: Load Azure signing config from 1Password
-        id: azure_config
-        uses: 1password/load-secrets-action@v4
-        with:
-          export-env: false
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          AZURE_CLIENT_ID: ${{ secrets.OP_AZURE_SECRET_ITEM }}/AZURE_CLIENT_ID
-          AZURE_TENANT_ID: ${{ secrets.OP_AZURE_SECRET_ITEM }}/AZURE_TENANT_ID
-          AZURE_SUBSCRIPTION_ID: ${{ secrets.OP_AZURE_SECRET_ITEM }}/AZURE_SUBSCRIPTION_ID
-          AZURE_SIGNING_ENDPOINT: ${{ secrets.OP_AZURE_SECRET_ITEM }}/AZURE_SIGNING_ENDPOINT
-          AZURE_SIGNING_ACCOUNT: ${{ secrets.OP_AZURE_SECRET_ITEM }}/AZURE_SIGNING_ACCOUNT
-          AZURE_CERT_PROFILE: ${{ secrets.OP_AZURE_SECRET_ITEM }}/AZURE_CERT_PROFILE
-
-      # load-secrets-action silently skips values that aren't op:// references
-      # (e.g. when OP_AZURE_SECRET_ITEM is unset) and emits empty outputs for
-      # empty fields — without this gate the job only fails minutes later, in
-      # azure/login, with an error that never names the real cause.
       - name: Validate Azure signing config
         shell: bash
         env:
-          AZURE_CLIENT_ID: ${{ steps.azure_config.outputs.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ steps.azure_config.outputs.AZURE_TENANT_ID }}
-          AZURE_SUBSCRIPTION_ID: ${{ steps.azure_config.outputs.AZURE_SUBSCRIPTION_ID }}
-          AZURE_SIGNING_ENDPOINT: ${{ steps.azure_config.outputs.AZURE_SIGNING_ENDPOINT }}
-          AZURE_SIGNING_ACCOUNT: ${{ steps.azure_config.outputs.AZURE_SIGNING_ACCOUNT }}
-          AZURE_CERT_PROFILE: ${{ steps.azure_config.outputs.AZURE_CERT_PROFILE }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_CERT_PROFILE: ${{ secrets.AZURE_CERT_PROFILE }}
         run: |
           set -euo pipefail
-          : "${AZURE_CLIENT_ID:?Configure AZURE_CLIENT_ID in the Azure 1Password item}"
-          : "${AZURE_TENANT_ID:?Configure AZURE_TENANT_ID in the Azure 1Password item}"
-          : "${AZURE_SUBSCRIPTION_ID:?Configure AZURE_SUBSCRIPTION_ID in the Azure 1Password item}"
-          : "${AZURE_SIGNING_ENDPOINT:?Configure AZURE_SIGNING_ENDPOINT in the Azure 1Password item}"
-          : "${AZURE_SIGNING_ACCOUNT:?Configure AZURE_SIGNING_ACCOUNT in the Azure 1Password item}"
-          : "${AZURE_CERT_PROFILE:?Configure AZURE_CERT_PROFILE in the Azure 1Password item}"
+          : "${AZURE_CLIENT_ID:?Configure AZURE_CLIENT_ID as a GitHub secret}"
+          : "${AZURE_TENANT_ID:?Configure AZURE_TENANT_ID as a GitHub secret}"
+          : "${AZURE_SUBSCRIPTION_ID:?Configure AZURE_SUBSCRIPTION_ID as a GitHub secret}"
+          : "${AZURE_SIGNING_ENDPOINT:?Configure AZURE_SIGNING_ENDPOINT as a GitHub secret}"
+          : "${AZURE_SIGNING_ACCOUNT:?Configure AZURE_SIGNING_ACCOUNT as a GitHub secret}"
+          : "${AZURE_CERT_PROFILE:?Configure AZURE_CERT_PROFILE as a GitHub secret}"
 
       # The exe IS the product on Windows — no separate CLI artifact will ever
       # ship there (cargo install covers that audience), so job and artifact
@@ -268,9 +224,9 @@ jobs:
       - name: Azure login (OIDC)
         uses: azure/login@v3
         with:
-          client-id: ${{ steps.azure_config.outputs.AZURE_CLIENT_ID }}
-          tenant-id: ${{ steps.azure_config.outputs.AZURE_TENANT_ID }}
-          subscription-id: ${{ steps.azure_config.outputs.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # artifact-signing-action installs its ArtifactSigning module from PSGallery,
       # which is intermittently missing on hosted windows runners (the action then
@@ -290,9 +246,9 @@ jobs:
       - name: Sign openlogi-gui.exe with Artifact Signing
         uses: azure/artifact-signing-action@v2
         with:
-          endpoint: ${{ steps.azure_config.outputs.AZURE_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ steps.azure_config.outputs.AZURE_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ steps.azure_config.outputs.AZURE_CERT_PROFILE }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE }}
           files: ${{ github.workspace }}\target\${{ matrix.target }}\release\openlogi-gui.exe
           # Timestamping is mandatory: without it the signature expires after
           # 3 days. The URL must stay http — SignTool rejects an https /tr up
@@ -372,37 +328,23 @@ jobs:
           name: OpenLogi-windows-${{ matrix.arch }}
           path: signed-exe
 
-      - name: Load Azure signing config from 1Password
-        id: azure_config
-        uses: 1password/load-secrets-action@v4
-        with:
-          export-env: false
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          AZURE_CLIENT_ID: ${{ secrets.OP_AZURE_SECRET_ITEM }}/AZURE_CLIENT_ID
-          AZURE_TENANT_ID: ${{ secrets.OP_AZURE_SECRET_ITEM }}/AZURE_TENANT_ID
-          AZURE_SUBSCRIPTION_ID: ${{ secrets.OP_AZURE_SECRET_ITEM }}/AZURE_SUBSCRIPTION_ID
-          AZURE_SIGNING_ENDPOINT: ${{ secrets.OP_AZURE_SECRET_ITEM }}/AZURE_SIGNING_ENDPOINT
-          AZURE_SIGNING_ACCOUNT: ${{ secrets.OP_AZURE_SECRET_ITEM }}/AZURE_SIGNING_ACCOUNT
-          AZURE_CERT_PROFILE: ${{ secrets.OP_AZURE_SECRET_ITEM }}/AZURE_CERT_PROFILE
-
       - name: Validate Azure signing config
         shell: bash
         env:
-          AZURE_CLIENT_ID: ${{ steps.azure_config.outputs.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ steps.azure_config.outputs.AZURE_TENANT_ID }}
-          AZURE_SUBSCRIPTION_ID: ${{ steps.azure_config.outputs.AZURE_SUBSCRIPTION_ID }}
-          AZURE_SIGNING_ENDPOINT: ${{ steps.azure_config.outputs.AZURE_SIGNING_ENDPOINT }}
-          AZURE_SIGNING_ACCOUNT: ${{ steps.azure_config.outputs.AZURE_SIGNING_ACCOUNT }}
-          AZURE_CERT_PROFILE: ${{ steps.azure_config.outputs.AZURE_CERT_PROFILE }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_CERT_PROFILE: ${{ secrets.AZURE_CERT_PROFILE }}
         run: |
           set -euo pipefail
-          : "${AZURE_CLIENT_ID:?Configure AZURE_CLIENT_ID in the Azure 1Password item}"
-          : "${AZURE_TENANT_ID:?Configure AZURE_TENANT_ID in the Azure 1Password item}"
-          : "${AZURE_SUBSCRIPTION_ID:?Configure AZURE_SUBSCRIPTION_ID in the Azure 1Password item}"
-          : "${AZURE_SIGNING_ENDPOINT:?Configure AZURE_SIGNING_ENDPOINT in the Azure 1Password item}"
-          : "${AZURE_SIGNING_ACCOUNT:?Configure AZURE_SIGNING_ACCOUNT in the Azure 1Password item}"
-          : "${AZURE_CERT_PROFILE:?Configure AZURE_CERT_PROFILE in the Azure 1Password item}"
+          : "${AZURE_CLIENT_ID:?Configure AZURE_CLIENT_ID as a GitHub secret}"
+          : "${AZURE_TENANT_ID:?Configure AZURE_TENANT_ID as a GitHub secret}"
+          : "${AZURE_SUBSCRIPTION_ID:?Configure AZURE_SUBSCRIPTION_ID as a GitHub secret}"
+          : "${AZURE_SIGNING_ENDPOINT:?Configure AZURE_SIGNING_ENDPOINT as a GitHub secret}"
+          : "${AZURE_SIGNING_ACCOUNT:?Configure AZURE_SIGNING_ACCOUNT as a GitHub secret}"
+          : "${AZURE_CERT_PROFILE:?Configure AZURE_CERT_PROFILE as a GitHub secret}"
 
       - name: Install the WiX toolset
         # Pinned exactly: a WiX point release can silently change the produced
@@ -439,9 +381,9 @@ jobs:
       - name: Azure login (OIDC)
         uses: azure/login@v3
         with:
-          client-id: ${{ steps.azure_config.outputs.AZURE_CLIENT_ID }}
-          tenant-id: ${{ steps.azure_config.outputs.AZURE_TENANT_ID }}
-          subscription-id: ${{ steps.azure_config.outputs.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # Same PSGallery flake guard as the exe job — see that step's comment.
       - name: Ensure PSGallery is registered
@@ -454,9 +396,9 @@ jobs:
       - name: Sign OpenLogi.msi with Artifact Signing
         uses: azure/artifact-signing-action@v2
         with:
-          endpoint: ${{ steps.azure_config.outputs.AZURE_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ steps.azure_config.outputs.AZURE_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ steps.azure_config.outputs.AZURE_CERT_PROFILE }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE }}
           files: ${{ github.workspace }}\out\OpenLogi.msi
           # http on purpose — see the exe signing step.
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
@@ -513,35 +455,15 @@ jobs:
           cache: pnpm
           cache-dependency-path: scripts/release-notes/pnpm-lock.yaml
 
-      - name: Load Codex release-notes credentials from 1Password
-        id: release_notes_config
-        continue-on-error: true
-        uses: 1password/load-secrets-action@v4
-        with:
-          export-env: false
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          CODEX_ACCESS_TOKEN: ${{ secrets.OP_CODEX_SECRET_ITEM }}/credential
-          CHATGPT_USERNAME: ${{ secrets.OP_CODEX_SECRET_ITEM }}/username
-          CODEX_ENDPOINT: ${{ secrets.OP_CODEX_SECRET_ITEM }}/ENDPOINT
-
-      - name: Mint release-notes GitHub App token
-        id: release_notes_app_token
-        continue-on-error: true
-        uses: ./.github/actions/github-app-token-from-1password
-        with:
-          op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          op-github-app-item: ${{ secrets.OP_GITHUB_APP_ITEM }}
-
       - name: Install release-notes dependencies
         run: pnpm --dir scripts/release-notes install --frozen-lockfile
 
       - name: Generate GitHub Release notes
         env:
-          CODEX_ACCESS_TOKEN: ${{ steps.release_notes_config.outputs.CODEX_ACCESS_TOKEN }}
-          CHATGPT_USERNAME: ${{ steps.release_notes_config.outputs.CHATGPT_USERNAME }}
-          CODEX_ENDPOINT: ${{ steps.release_notes_config.outputs.CODEX_ENDPOINT }}
-          GH_TOKEN: ${{ steps.release_notes_app_token.outputs.token }}
+          CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
+          CHATGPT_USERNAME: ${{ secrets.CHATGPT_USERNAME }}
+          CODEX_ENDPOINT: ${{ secrets.CODEX_ENDPOINT }}
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
         run: |
           set -euo pipefail
           node scripts/release-notes/generate.ts \
@@ -719,39 +641,24 @@ jobs:
             fi
           done
 
-      - name: Load static updater publishing config from 1Password
-        id: r2_config
-        uses: 1password/load-secrets-action@v4
-        with:
-          export-env: false
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          OPENLOGI_UPDATE_BASE_URL: ${{ secrets.OP_R2_SECRET_ITEM }}/OPENLOGI_UPDATE_BASE_URL
-          OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY: ${{ secrets.OP_R2_SECRET_ITEM }}/OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY
-          OPENLOGI_UPDATE_MINISIGN_SECRET_KEY: ${{ secrets.OP_R2_SECRET_ITEM }}/OPENLOGI_UPDATE_MINISIGN_SECRET_KEY
-          R2_ACCOUNT_ID: ${{ secrets.OP_R2_SECRET_ITEM }}/CLOUDFLARE_R2_ACCOUNT_ID
-          R2_BUCKET: ${{ secrets.OP_R2_SECRET_ITEM }}/CLOUDFLARE_R2_BUCKET
-          R2_ACCESS_KEY_ID: ${{ secrets.OP_R2_SECRET_ITEM }}/CLOUDFLARE_R2_ACCESS_KEY_ID
-          R2_SECRET_ACCESS_KEY: ${{ secrets.OP_R2_SECRET_ITEM }}/CLOUDFLARE_R2_SECRET_ACCESS_KEY
-
       - name: Validate R2 publishing configuration
         env:
-          OPENLOGI_UPDATE_BASE_URL: ${{ steps.r2_config.outputs.OPENLOGI_UPDATE_BASE_URL }}
-          OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY: ${{ steps.r2_config.outputs.OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY }}
-          OPENLOGI_UPDATE_MINISIGN_SECRET_KEY: ${{ steps.r2_config.outputs.OPENLOGI_UPDATE_MINISIGN_SECRET_KEY }}
-          R2_ACCOUNT_ID: ${{ steps.r2_config.outputs.R2_ACCOUNT_ID }}
-          R2_BUCKET: ${{ steps.r2_config.outputs.R2_BUCKET }}
-          R2_ACCESS_KEY_ID: ${{ steps.r2_config.outputs.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ steps.r2_config.outputs.R2_SECRET_ACCESS_KEY }}
+          OPENLOGI_UPDATE_BASE_URL: ${{ secrets.OPENLOGI_UPDATE_BASE_URL }}
+          OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY: ${{ secrets.OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY }}
+          OPENLOGI_UPDATE_MINISIGN_SECRET_KEY: ${{ secrets.OPENLOGI_UPDATE_MINISIGN_SECRET_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.CLOUDFLARE_R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
         run: |
           set -euo pipefail
-          : "${OPENLOGI_UPDATE_BASE_URL:?Configure OPENLOGI_UPDATE_BASE_URL in the R2 1Password item}"
-          : "${OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY:?Configure OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY in the R2 1Password item}"
-          : "${OPENLOGI_UPDATE_MINISIGN_SECRET_KEY:?Configure OPENLOGI_UPDATE_MINISIGN_SECRET_KEY in the R2 1Password item}"
-          : "${R2_ACCOUNT_ID:?Configure CLOUDFLARE_R2_ACCOUNT_ID in the R2 1Password item}"
-          : "${R2_BUCKET:?Configure CLOUDFLARE_R2_BUCKET in the R2 1Password item}"
-          : "${R2_ACCESS_KEY_ID:?Configure CLOUDFLARE_R2_ACCESS_KEY_ID in the R2 1Password item}"
-          : "${R2_SECRET_ACCESS_KEY:?Configure CLOUDFLARE_R2_SECRET_ACCESS_KEY in the R2 1Password item}"
+          : "${OPENLOGI_UPDATE_BASE_URL:?Configure OPENLOGI_UPDATE_BASE_URL as a GitHub secret}"
+          : "${OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY:?Configure OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY as a GitHub secret}"
+          : "${OPENLOGI_UPDATE_MINISIGN_SECRET_KEY:?Configure OPENLOGI_UPDATE_MINISIGN_SECRET_KEY as a GitHub secret}"
+          : "${R2_ACCOUNT_ID:?Configure CLOUDFLARE_R2_ACCOUNT_ID as a GitHub secret}"
+          : "${R2_BUCKET:?Configure CLOUDFLARE_R2_BUCKET as a GitHub secret}"
+          : "${R2_ACCESS_KEY_ID:?Configure CLOUDFLARE_R2_ACCESS_KEY_ID as a GitHub secret}"
+          : "${R2_SECRET_ACCESS_KEY:?Configure CLOUDFLARE_R2_SECRET_ACCESS_KEY as a GitHub secret}"
 
       - name: Install minisign
         run: |
@@ -760,14 +667,14 @@ jobs:
 
       - name: Sign release artifacts with minisign
         env:
-          OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY: ${{ steps.r2_config.outputs.OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY }}
-          OPENLOGI_UPDATE_MINISIGN_SECRET_KEY: ${{ steps.r2_config.outputs.OPENLOGI_UPDATE_MINISIGN_SECRET_KEY }}
+          OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY: ${{ secrets.OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY }}
+          OPENLOGI_UPDATE_MINISIGN_SECRET_KEY: ${{ secrets.OPENLOGI_UPDATE_MINISIGN_SECRET_KEY }}
         run: |
           set -euo pipefail
           key_file="${RUNNER_TEMP}/openlogi-minisign.key"
           umask 077
           trap 'rm -f "$key_file"' EXIT
-          # The secret key file is stored base64-encoded in 1Password so its two
+          # The secret key file is stored base64-encoded as a GitHub secret so its two
           # lines survive paste/round-trip (a raw multi-line value can have its
           # newline mangled to a space — see the GitHub App key note above).
           # `tr -d` drops any wrapping whitespace before decoding.
@@ -787,7 +694,7 @@ jobs:
 
       - name: Generate static updater manifest
         env:
-          OPENLOGI_UPDATE_BASE_URL: ${{ steps.r2_config.outputs.OPENLOGI_UPDATE_BASE_URL }}
+          OPENLOGI_UPDATE_BASE_URL: ${{ secrets.OPENLOGI_UPDATE_BASE_URL }}
         run: |
           set -euo pipefail
           cargo run -p xtask -- release latest-json \
@@ -798,12 +705,12 @@ jobs:
 
       - name: Upload static updater assets to R2
         env:
-          AWS_ACCESS_KEY_ID: ${{ steps.r2_config.outputs.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ steps.r2_config.outputs.R2_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           AWS_REGION: auto
-          R2_ACCOUNT_ID: ${{ steps.r2_config.outputs.R2_ACCOUNT_ID }}
-          R2_BUCKET: ${{ steps.r2_config.outputs.R2_BUCKET }}
+          R2_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.CLOUDFLARE_R2_BUCKET }}
         run: |
           set -euo pipefail
           endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
@@ -863,19 +770,10 @@ jobs:
       # on disk before it can run.
       - uses: actions/checkout@v6
 
-      - name: Mint homebrew-tap token (GitHub App)
-        id: tap_token
-        uses: ./.github/actions/github-app-token-from-1password
-        with:
-          op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          op-github-app-item: ${{ secrets.OP_GITHUB_APP_ITEM }}
-          owner: ${{ vars.HOMEBREW_TAP_OWNER }}
-          repositories: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
-
       - name: Dispatch homebrew-tap update
         uses: peter-evans/repository-dispatch@v4
         with:
-          token: ${{ steps.tap_token.outputs.token }}
+          token: ${{ secrets.RELEASE_BOT_TOKEN }}
           repository: ${{ vars.HOMEBREW_TAP_OWNER }}/${{ vars.HOMEBREW_TAP_REPOSITORY }}
           event-type: update-openlogi
           client-payload: |
