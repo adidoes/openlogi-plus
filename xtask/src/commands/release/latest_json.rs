@@ -77,7 +77,10 @@ pub(crate) fn run(args: &Args) -> Result<()> {
         published_at: OffsetDateTime::from(SystemTime::now())
             .format(&Rfc3339)
             .context("could not format current timestamp")?,
-        release_url: format!("https://github.com/{github_repository}/releases/tag/{}", args.tag),
+        release_url: format!(
+            "https://github.com/{github_repository}/releases/tag/{}",
+            args.tag
+        ),
         assets,
     };
 
