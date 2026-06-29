@@ -40,7 +40,7 @@ version = "0.6.18"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/AprilNEA/OpenLogi"
+repository = "https://github.com/adidoes/openlogi-plus"
 authors = ["AprilNEA <dev@aprilnea.me>"]
 description = "Lightweight, local-first alternative to Logitech Options+ for HID++ devices"
 

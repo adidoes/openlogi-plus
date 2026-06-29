@@ -200,7 +200,7 @@ jobs:
       id-token: write
       contents: read
     # The federated credential's subject is bound to this GitHub environment, so the
-    # OIDC `sub` claim stays stable (repo:AprilNEA/OpenLogi:environment:release)
+    # OIDC `sub` claim stays stable (repo:<owner>/<repo>:environment:release)
     # instead of changing with every tag ref.
     environment: release
     steps:
@@ -263,7 +263,7 @@ jobs:
         run: cargo build --release -p openlogi-gui --target ${{ matrix.target }}
 
       # Federated (passwordless) login. Requires an app registration whose federated
-      # credential subject is `repo:AprilNEA/OpenLogi:environment:release`, granted the
+      # credential subject is `repo:${{ github.repository }}:environment:release`, granted the
       # "Artifact Signing Certificate Profile Signer" role on the signing account.
       - name: Azure login (OIDC)
         uses: azure/login@v3
@@ -855,6 +855,7 @@ jobs:
     name: Dispatch homebrew-tap update
     runs-on: ubuntu-latest
     needs: publish
+    if: vars.HOMEBREW_TAP_OWNER != '' && vars.HOMEBREW_TAP_REPOSITORY != ''
     permissions:
       contents: read
     steps:
@@ -868,14 +869,14 @@ jobs:
         with:
           op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           op-github-app-item: ${{ secrets.OP_GITHUB_APP_ITEM }}
-          owner: AprilNEA
-          repositories: homebrew-tap
+          owner: ${{ vars.HOMEBREW_TAP_OWNER }}
+          repositories: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
 
       - name: Dispatch homebrew-tap update
         uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ steps.tap_token.outputs.token }}
-          repository: AprilNEA/homebrew-tap
+          repository: ${{ vars.HOMEBREW_TAP_OWNER }}/${{ vars.HOMEBREW_TAP_REPOSITORY }}
           event-type: update-openlogi
           client-payload: |
             {"version": "${{ github.ref_name }}"}

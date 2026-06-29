@@ -65,6 +65,9 @@ pub(crate) fn run(args: &Args) -> Result<()> {
         bail!("no architecture-specific DMG assets found for manifest");
     }
 
+    let github_repository =
+        std::env::var("GITHUB_REPOSITORY").unwrap_or_else(|_| "adidoes/openlogi-plus".to_string());
+
     let manifest = Manifest {
         schema_version: 1,
         app_id: APP_ID,
@@ -74,10 +77,7 @@ pub(crate) fn run(args: &Args) -> Result<()> {
         published_at: OffsetDateTime::from(SystemTime::now())
             .format(&Rfc3339)
             .context("could not format current timestamp")?,
-        release_url: format!(
-            "https://github.com/AprilNEA/OpenLogi/releases/tag/{}",
-            args.tag
-        ),
+        release_url: format!("https://github.com/{github_repository}/releases/tag/{}", args.tag),
         assets,
     };
 

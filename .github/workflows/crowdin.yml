@@ -24,7 +24,7 @@ jobs:
   synchronize:
     name: Synchronize translations
     runs-on: ubuntu-latest
-    if: github.repository == 'AprilNEA/OpenLogi'
+    if: vars.CROWDIN_ENABLED == 'true'
 
     steps:
       - name: Checkout

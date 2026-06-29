@@ -33,7 +33,7 @@ jobs:
       id-token: write
       contents: read
     # Same environment as the release job so the OIDC subject matches the
-    # federated credential (repo:AprilNEA/OpenLogi:environment:release).
+    # federated credential (repo:<owner>/<repo>:environment:release).
     environment: release
     steps:
       - uses: actions/checkout@v6
